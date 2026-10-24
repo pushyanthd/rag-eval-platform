@@ -1,14 +1,39 @@
 """Local and checksum-verified remote dataset materialization."""
 
+import logging
 import shutil
 import stat
 import tempfile
+import time
+import urllib.error
 import urllib.request
 import zipfile
+from http.client import IncompleteRead
 from pathlib import Path
 
 from ragops.config import LocalDatasetManifest, RemoteDatasetManifest
 from ragops.ingestion.hashing import hash_file
+
+_logger = logging.getLogger(__name__)
+
+
+def _download_archive(url: str, destination: Path) -> None:
+    """Retry transient network failures without retaining partial bytes."""
+    for attempt in range(3):
+        try:
+            with (
+                destination.open("wb") as target,
+                urllib.request.urlopen(url, timeout=60) as response,
+            ):
+                shutil.copyfileobj(response, target)
+            return
+        except (urllib.error.URLError, TimeoutError, ConnectionError, IncompleteRead) as error:
+            if isinstance(error, urllib.error.HTTPError) and error.code != 429 and error.code < 500:
+                raise
+            if attempt == 2:
+                raise
+            _logger.warning("Dataset download interrupted; retrying (%s)", type(error).__name__)
+            time.sleep(2 ** (attempt + 1))
 
 
 class ChecksumMismatchError(ValueError):
@@ -60,8 +85,7 @@ def materialize_dataset(
                 prefix=f"{name}-", suffix=".download", dir=download_root, delete=False
             ) as temporary_file:
                 temporary_path = Path(temporary_file.name)
-                with urllib.request.urlopen(manifest.url, timeout=60) as response:
-                    shutil.copyfileobj(response, temporary_file)
+            _download_archive(manifest.url, temporary_path)
             verify_checksum(
                 temporary_path,
                 algorithm=manifest.checksum_algorithm,

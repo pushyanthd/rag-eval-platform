@@ -1,12 +1,18 @@
 {
   "dataset": "scifact",
-  "git_commit": "1421ab7ebedb7f1a0b53fa59f615d3b2531245ee",
+  "generation_prompt_version": null,
+  "generation_sample_size": null,
+  "generation_variants": [],
+  "generator_profile": null,
+  "git_commit": "36562d88ca67f57827dfc26119edd6a098572fde",
   "index_fingerprints": {
-    "bm25": "92de8e2a9b6b7accfe22109760961888d2c704ba7f9e2e83b27a415abcb1f315",
-    "dense_bge_small": "92de8e2a9b6b7accfe22109760961888d2c704ba7f9e2e83b27a415abcb1f315",
-    "hybrid_rrf": "92de8e2a9b6b7accfe22109760961888d2c704ba7f9e2e83b27a415abcb1f315",
-    "hybrid_rrf_rerank": "92de8e2a9b6b7accfe22109760961888d2c704ba7f9e2e83b27a415abcb1f315"
+    "bm25": "f07c16036aa305192aab16b3bc3eab2a7db625e9c5d3e7d621851ba4a3e79f11",
+    "dense_bge_small": "f07c16036aa305192aab16b3bc3eab2a7db625e9c5d3e7d621851ba4a3e79f11",
+    "hybrid_rrf": "f07c16036aa305192aab16b3bc3eab2a7db625e9c5d3e7d621851ba4a3e79f11",
+    "hybrid_rrf_rerank": "f07c16036aa305192aab16b3bc3eab2a7db625e9c5d3e7d621851ba4a3e79f11"
   },
+  "judge_profiles": [],
+  "judge_prompt_version": null,
   "metrics": {
     "bm25": {
       "mrr_at_10": 0.5428571428571428,
@@ -33,8 +39,8 @@
       "recall_at_100": 1.0
     }
   },
-  "recorded_at": "2026-09-08T01:04:17.718347Z",
-  "run_id": "da4163b7-5636-4b53-b440-c239b60e95a5",
+  "recorded_at": "2026-10-24T20:57:55.635643Z",
+  "run_id": "ee30dc9f-c0d5-407e-bfdb-4f76a07ab5dc",
   "sample_size": 50,
   "seed": 42,
   "split": "test",

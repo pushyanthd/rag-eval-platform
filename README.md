@@ -344,6 +344,21 @@ make run
 
 Liveness and readiness are at `http://127.0.0.1:8000/healthz` and `http://127.0.0.1:8000/readyz`.
 
+`/healthz` reports process liveness. `/readyz` returns HTTP 503 until startup finishes and whenever
+the database, application schema, required services, or production API-key configuration are
+unavailable. Dependency checks have a two-second deadline, configurable through
+`RAGOPS_READINESS_TIMEOUT_SECONDS`, and responses contain component statuses without connection
+details or credentials. Readiness is checked live and responses must not be cached.
+
+A fresh, migrated database can report ready before ingestion so the initial deployment can finish.
+To require a searchable corpus, set `RAGOPS_READINESS_DATASET=scifact` and
+`RAGOPS_READINESS_VARIANT=hybrid_rrf_rerank` (the variant defaults to `bm25`). Startup then runs a
+background retrieval warm-up, loading and exercising the selected variant's indexes and models.
+Readiness stays HTTP 503 until this succeeds; failed warm-ups retry every five seconds, with a
+180-second deadline per attempt. Probes check the target's compatible index and readable BM25
+files without executing searches, downloading models, or calling an LLM. Model loading remains
+lazy when no readiness dataset is set. The optional OpenAI provider is not contacted by probes.
+
 Validated retrieval variants, model profiles, pricing, and regression thresholds live under
 `config/`. Runtime settings use the `RAGOPS_` environment prefix; for example,
 `RAGOPS_DATABASE_URL` overrides the local PostgreSQL URL. See `.env.example` for the full set.
@@ -524,6 +539,10 @@ Only metrics that appear in both the baseline and the threshold file are gated; 
 the run but absent from the baseline is treated as new and ungated, while a baselined metric missing
 from the run is rejected rather than silently passed. Baselines are updated the way a snapshot test
 is: through a reviewed pull request that carries the new run identifier and a justification.
+
+The [2026-10-24 baseline refresh](evals/baselines/refresh-2026-10-24.md) documents the query-metadata
+schema migration, source CI reports, fingerprint changes, and all nonzero metric deltas. Regression
+tests check that each real-dataset baseline matches its archived report and current variants.
 
 Every run also pins a content-derived index fingerprint per variant. The fingerprint covers the
 corpus, embedding and HNSW configuration, and BM25 artifact; unlike a database UUID it is stable

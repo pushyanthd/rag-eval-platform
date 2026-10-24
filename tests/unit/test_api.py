@@ -107,11 +107,11 @@ def test_liveness() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_readiness() -> None:
+def test_readiness_is_unavailable_before_startup() -> None:
     response = asyncio.run(get("/readyz"))
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.status_code == 503
+    assert response.json() == {"status": "not_ready", "checks": {"startup": "pending"}}
 
 
 def test_lifespan_hydrates_runtime_artifacts_before_building_retrieval(
