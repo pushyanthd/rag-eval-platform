@@ -344,6 +344,21 @@ make run
 
 Liveness and readiness are at `http://127.0.0.1:8000/healthz` and `http://127.0.0.1:8000/readyz`.
 
+`/healthz` reports process liveness. `/readyz` returns HTTP 503 until startup finishes and whenever
+the database, application schema, required services, or production API-key configuration are
+unavailable. Dependency checks have a two-second deadline, configurable through
+`RAGOPS_READINESS_TIMEOUT_SECONDS`, and responses contain component statuses without connection
+details or credentials. Readiness is checked live and responses must not be cached.
+
+A fresh, migrated database can report ready before ingestion so the initial deployment can finish.
+To require a searchable corpus, set `RAGOPS_READINESS_DATASET=scifact` and
+`RAGOPS_READINESS_VARIANT=hybrid_rrf_rerank` (the variant defaults to `bm25`). Startup then runs a
+background retrieval warm-up, loading and exercising the selected variant's indexes and models.
+Readiness stays HTTP 503 until this succeeds; failed warm-ups retry every five seconds, with a
+180-second deadline per attempt. Probes check the target's compatible index and readable BM25
+files without executing searches, downloading models, or calling an LLM. Model loading remains
+lazy when no readiness dataset is set. The optional OpenAI provider is not contacted by probes.
+
 Validated retrieval variants, model profiles, pricing, and regression thresholds live under
 `config/`. Runtime settings use the `RAGOPS_` environment prefix; for example,
 `RAGOPS_DATABASE_URL` overrides the local PostgreSQL URL. See `.env.example` for the full set.

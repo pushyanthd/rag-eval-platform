@@ -5,10 +5,16 @@ from pathlib import Path
 import bm25s
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from ragops.api import create_app
-from ragops.config import DatasetCatalog, LocalDatasetManifest, VariantRegistry
+from ragops.config import (
+    DatasetCatalog,
+    LocalDatasetManifest,
+    Settings,
+    VariantRegistry,
+    load_config_bundle,
+)
 from ragops.contracts import (
     EvalRunSpec,
     EvalRunState,
@@ -20,7 +26,8 @@ from ragops.evaluation import run_retrieval_evaluation
 from ragops.ingestion.artifacts import Bm25sIndexBuilder
 from ragops.ingestion.service import IngestionService
 from ragops.persistence import Base, create_engine, create_session_factory
-from ragops.persistence.models import EvalQueryResultRow
+from ragops.persistence.models import EvalQueryResultRow, IndexVersionRow
+from ragops.readiness import DatabaseReadinessProbe
 from ragops.retrieval.pipeline import RetrievalPipeline
 from ragops.retrieval.sparse import Bm25sSparseRetriever
 from ragops.retrieval.store import SqlAlchemySearchDataStore
@@ -153,6 +160,30 @@ def test_ingestion_is_complete_and_resumable(tmp_path: Path) -> None:
             ).all()
         assert len(eval_results) == 2
         assert all(result.deterministic_scores["mrr_at_10"] == 1.0 for result in eval_results)
+
+        readiness = DatabaseReadinessProbe(
+            sessions,
+            bundle=load_config_bundle(Path("config")),
+            settings=Settings(
+                _env_file=None,
+                artifact_directory=tmp_path / "artifacts",
+                readiness_dataset="fixture",
+            ),
+        )
+        assert await readiness.check() == {"database": "ok", "index": "ok", "artifacts": "ok"}
+        artifact = first.bm25_artifact.path / "params.index.json"
+        contents = artifact.read_bytes()
+        artifact.unlink()
+        assert (await readiness.check())["artifacts"] == "unavailable"
+        artifact.write_bytes(contents)
+        assert (await readiness.check())["artifacts"] == "ok"
+        async with sessions.begin() as session:
+            await session.execute(
+                update(IndexVersionRow)
+                .where(IndexVersionRow.id == first.index_version.id)
+                .values(state=IndexBuildState.BUILDING.value)
+            )
+        assert (await readiness.check())["index"] == "unavailable"
 
         await engine.dispose()
 

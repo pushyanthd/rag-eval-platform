@@ -1,7 +1,9 @@
 """HTTP API for ragops."""
 
+import asyncio
+import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Annotated
 from uuid import UUID
 
@@ -24,6 +26,7 @@ from ragops.generation.factory import build_answer_service
 from ragops.generation.service import AnswerService
 from ragops.persistence import create_engine, create_session_factory
 from ragops.provenance import resolve_git_commit, resolve_image_digest
+from ragops.readiness import DatabaseReadinessProbe, ReadinessProbe
 from ragops.retrieval.errors import (
     ArtifactNotFoundError,
     CompatibleIndexNotFoundError,
@@ -32,9 +35,11 @@ from ragops.retrieval.errors import (
 )
 from ragops.retrieval.factory import build_retrieval_pipeline
 from ragops.retrieval.pipeline import SearchExecutor
-from ragops.schemas import HealthResponse
+from ragops.schemas import HealthResponse, ReadinessResponse, ReadinessStatus
 from ragops.security import ApiKeyAuthenticator
 from ragops.telemetry import configure_telemetry, instrument_fastapi, prometheus_response
+
+_logger = logging.getLogger(__name__)
 
 
 def create_app(
@@ -43,6 +48,7 @@ def create_app(
     answer_service: AnswerService | None = None,
     *,
     artifact_store: ArtifactStore | None = None,
+    readiness_probe: ReadinessProbe | None = None,
 ) -> FastAPI:
     """Build the FastAPI application."""
 
@@ -71,44 +77,84 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         engine: AsyncEngine | None = None
+        warmup_task: asyncio.Task[None] | None = None
         needs_search = application.state.search_service is None
         needs_evaluation = application.state.evaluation_service is None
         needs_answer = application.state.answer_service is None
-        if needs_search or needs_evaluation:
-            configured_store = artifact_store or build_artifact_store(settings)
-            await configured_store.hydrate_runtime()
-            bundle = load_config_bundle(settings.configuration_directory)
-            engine = create_engine(settings.database_url)
-            sessions = create_session_factory(engine)
-            if needs_search:
-                application.state.search_service = build_retrieval_pipeline(
-                    bundle,
-                    sessions,
-                    artifact_root=settings.artifact_directory,
-                    device=settings.model_device,
-                    model_cache_directory=settings.model_cache_directory,
-                )
-            if needs_evaluation:
-                application.state.evaluation_service = DatabaseEvaluationService(
-                    sessions,
-                    datasets=bundle.datasets,
-                    variants=bundle.variants,
-                    git_commit=resolve_git_commit(),
-                    image_digest=resolve_image_digest(),
-                )
-            if needs_answer and settings.openai_api_key is not None:
-                assert application.state.search_service is not None
-                application.state.answer_service = build_answer_service(
-                    bundle,
-                    sessions,
-                    search=application.state.search_service,
-                    settings=settings,
-                )
         try:
+            if (
+                needs_search
+                or needs_evaluation
+                or (needs_answer and settings.openai_api_key is not None)
+                or application.state.readiness_probe is None
+            ):
+                configured_store = artifact_store or build_artifact_store(settings)
+                await configured_store.hydrate_runtime()
+                bundle = load_config_bundle(settings.configuration_directory)
+                engine = create_engine(settings.database_url)
+                sessions = create_session_factory(engine)
+                if application.state.readiness_probe is None:
+                    application.state.readiness_probe = DatabaseReadinessProbe(
+                        sessions, bundle=bundle, settings=settings
+                    )
+                if needs_search:
+                    application.state.search_service = build_retrieval_pipeline(
+                        bundle,
+                        sessions,
+                        artifact_root=settings.artifact_directory,
+                        device=settings.model_device,
+                        model_cache_directory=settings.model_cache_directory,
+                    )
+                if needs_evaluation:
+                    application.state.evaluation_service = DatabaseEvaluationService(
+                        sessions,
+                        datasets=bundle.datasets,
+                        variants=bundle.variants,
+                        git_commit=resolve_git_commit(),
+                        image_digest=resolve_image_digest(),
+                    )
+                if needs_answer and settings.openai_api_key is not None:
+                    assert application.state.search_service is not None
+                    application.state.answer_service = build_answer_service(
+                        bundle,
+                        sessions,
+                        search=application.state.search_service,
+                        settings=settings,
+                    )
+            if settings.readiness_dataset is not None:
+                warmup_task = asyncio.create_task(warm_retrieval(application))
+            application.state.readiness_warmup = warmup_task
+            application.state.started = True
             yield
         finally:
+            application.state.started = False
+            if warmup_task is not None:
+                warmup_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await warmup_task
             if engine is not None:
                 await engine.dispose()
+
+    async def warm_retrieval(application: FastAPI) -> None:
+        """Exercise the required route outside probes, retrying after ingestion."""
+        assert settings.readiness_dataset is not None
+        request = SearchRequest(
+            query="readiness probe",
+            dataset=settings.readiness_dataset,
+            variant=settings.readiness_variant,
+            k=1,
+        )
+        while True:
+            try:
+                async with asyncio.timeout(settings.readiness_warmup_timeout_seconds):
+                    result = await application.state.search_service.search(request)
+                    if not result.hits:
+                        raise ValueError("readiness retrieval returned no documents")
+                return
+            except Exception as error:
+                # Never include database URLs, provider responses, or exception text.
+                _logger.warning("Retrieval warm-up unavailable (%s)", type(error).__name__)
+                await asyncio.sleep(5)
 
     application = FastAPI(
         title="RAG Evaluation & Observability Platform",
@@ -118,6 +164,9 @@ def create_app(
     application.state.search_service = search_service
     application.state.evaluation_service = evaluation_service
     application.state.answer_service = answer_service
+    application.state.readiness_probe = readiness_probe
+    application.state.readiness_warmup = None
+    application.state.started = False
     instrument_fastapi(application)
 
     @application.get("/healthz", tags=["operations"])
@@ -125,10 +174,50 @@ def create_app(
         """Report whether the process is alive."""
         return HealthResponse(status="ok")
 
-    @application.get("/readyz", tags=["operations"])
-    async def readiness() -> HealthResponse:
-        """Report whether the service is ready to accept requests."""
-        return HealthResponse(status="ok")
+    @application.get("/readyz", tags=["operations"], responses={503: {"model": ReadinessResponse}})
+    async def readiness(response: Response) -> ReadinessResponse:
+        """Check live dependencies within the load balancer's probe deadline."""
+        checks: dict[str, ReadinessStatus] = {}
+        if not application.state.started:
+            checks["startup"] = "pending"
+        else:
+            services_available = (
+                application.state.search_service is not None
+                and application.state.evaluation_service is not None
+                and (
+                    settings.openai_api_key is None or application.state.answer_service is not None
+                )
+            )
+            checks["services"] = "ok" if services_available else "unavailable"
+            if settings.environment == "production":
+                checks["authentication"] = "ok" if authenticator.configured else "unavailable"
+            probe: ReadinessProbe | None = application.state.readiness_probe
+            if probe is None:
+                checks["dependencies"] = "unavailable"
+            else:
+                try:
+                    async with asyncio.timeout(settings.readiness_timeout_seconds):
+                        checks.update(await probe.check())
+                except TimeoutError:
+                    checks["dependencies"] = "timeout"
+                except Exception:
+                    checks["dependencies"] = "unavailable"
+            if settings.readiness_dataset is not None:
+                task: asyncio.Task[None] | None = application.state.readiness_warmup
+                checks["retrieval_warmup"] = (
+                    "ok"
+                    if (
+                        task is not None
+                        and task.done()
+                        and not task.cancelled()
+                        and task.exception() is None
+                    )
+                    else "pending"
+                )
+        ready = all(value == "ok" for value in checks.values())
+        response.status_code = 200 if ready else 503
+        response.headers["Cache-Control"] = "no-store"
+        return ReadinessResponse(status="ok" if ready else "not_ready", checks=checks)
 
     @application.get(
         "/metrics",

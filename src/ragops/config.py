@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     prompt_directory: Path = Path("prompts")
     model_cache_directory: Path = Path("artifacts/models")
     model_device: str | None = None
+    readiness_timeout_seconds: float = Field(default=2.0, gt=0, le=10)
+    readiness_dataset: str | None = Field(default=None, min_length=1)
+    readiness_variant: str = Field(default="bm25", min_length=1)
+    readiness_warmup_timeout_seconds: PositiveFloat = 180.0
     worker_poll_interval_seconds: PositiveFloat = 1.0
     worker_lease_seconds: PositiveInt = 300
     otlp_endpoint: str | None = None

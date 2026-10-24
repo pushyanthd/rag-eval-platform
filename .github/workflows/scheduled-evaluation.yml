@@ -9,6 +9,10 @@ permissions:
   contents: read
   issues: write
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   full-evaluation:
     if: github.event_name == 'workflow_dispatch' || vars.PORTFOLIO_MODE == 'false'
