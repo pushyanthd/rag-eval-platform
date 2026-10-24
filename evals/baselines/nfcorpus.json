@@ -1,18 +1,24 @@
 {
   "dataset": "nfcorpus",
-  "git_commit": "1cf6fdb49c34ca736d714de0143424555b1b61e0",
+  "generation_prompt_version": null,
+  "generation_sample_size": null,
+  "generation_variants": [],
+  "generator_profile": null,
+  "git_commit": "36562d88ca67f57827dfc26119edd6a098572fde",
   "index_fingerprints": {
-    "bm25": "e753dd39de1e9945bace0ab21356441c697d5bc2a160df4da0d55638f95f9d8b",
-    "dense_bge_small": "e753dd39de1e9945bace0ab21356441c697d5bc2a160df4da0d55638f95f9d8b",
-    "hybrid_rrf": "e753dd39de1e9945bace0ab21356441c697d5bc2a160df4da0d55638f95f9d8b",
-    "hybrid_rrf_rerank": "e753dd39de1e9945bace0ab21356441c697d5bc2a160df4da0d55638f95f9d8b"
+    "bm25": "d6fae4ea000cade07b0b441896d3b9c6dd1d3eacbe14e4d739c41b816e19f8ae",
+    "dense_bge_small": "d6fae4ea000cade07b0b441896d3b9c6dd1d3eacbe14e4d739c41b816e19f8ae",
+    "hybrid_rrf": "d6fae4ea000cade07b0b441896d3b9c6dd1d3eacbe14e4d739c41b816e19f8ae",
+    "hybrid_rrf_rerank": "d6fae4ea000cade07b0b441896d3b9c6dd1d3eacbe14e4d739c41b816e19f8ae"
   },
+  "judge_profiles": [],
+  "judge_prompt_version": null,
   "metrics": {
     "bm25": {
       "mrr_at_10": 0.5353333333333333,
-      "ndcg_at_10": 0.30567802823131984,
+      "ndcg_at_10": 0.3055993742280682,
       "recall_at_10": 0.1634559667547925,
-      "recall_at_100": 0.28770992800990913
+      "recall_at_100": 0.28756833320526737
     },
     "dense_bge_small": {
       "mrr_at_10": 0.5412222222222222,
@@ -22,19 +28,19 @@
     },
     "hybrid_rrf": {
       "mrr_at_10": 0.5946666666666667,
-      "ndcg_at_10": 0.3491590857084803,
+      "ndcg_at_10": 0.3490560977051699,
       "recall_at_10": 0.17594628561370423,
-      "recall_at_100": 0.31600404594473086
+      "recall_at_100": 0.33072313196623626
     },
     "hybrid_rrf_rerank": {
-      "mrr_at_10": 0.5771666666666667,
-      "ndcg_at_10": 0.35649770834153977,
+      "mrr_at_10": 0.5741904761904761,
+      "ndcg_at_10": 0.3560000311303011,
       "recall_at_10": 0.1796960055824424,
-      "recall_at_100": 0.31600404594473086
+      "recall_at_100": 0.33072313196623626
     }
   },
-  "recorded_at": "2026-09-08T14:33:28.977865Z",
-  "run_id": "bc29122e-d2c5-4286-b7f2-cfae82bae58f",
+  "recorded_at": "2026-10-24T20:57:55.638008Z",
+  "run_id": "eca5b181-a0db-4046-a2ce-4c4e86d6d8ea",
   "sample_size": 50,
   "seed": 42,
   "split": "test",

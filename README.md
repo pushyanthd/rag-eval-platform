@@ -540,6 +540,10 @@ the run but absent from the baseline is treated as new and ungated, while a base
 from the run is rejected rather than silently passed. Baselines are updated the way a snapshot test
 is: through a reviewed pull request that carries the new run identifier and a justification.
 
+The [2026-10-24 baseline refresh](evals/baselines/refresh-2026-10-24.md) documents the query-metadata
+schema migration, source CI reports, fingerprint changes, and all nonzero metric deltas. Regression
+tests check that each real-dataset baseline matches its archived report and current variants.
+
 Every run also pins a content-derived index fingerprint per variant. The fingerprint covers the
 corpus, embedding and HNSW configuration, and BM25 artifact; unlike a database UUID it is stable
 when an identical index is rebuilt in CI. The gate rejects a different fingerprint or variant
